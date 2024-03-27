@@ -1,0 +1,29 @@
+{
+  "name": "search-param-combinators",
+  "version": "1.0.0",
+  "description": "Strongly typed combinators for parsing and validating URL search parameters into arbitrary data types.",
+  "main": "index.js",
+  "scripts": {
+    "start": "tsc -w",
+    "build": "tsc -b",
+    "test": "jest",
+    "test-watch": "jest --watch",
+    "prepare": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/saxxie-dev/search-param-combinators.git"
+  },
+  "author": "saxxie.dev",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/saxxie-dev/search-param-combinators/issues"
+  },
+  "homepage": "https://github.com/saxxie-dev/search-param-combinators#readme",
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "typescript": "^5.4.2"
+  }
+}
