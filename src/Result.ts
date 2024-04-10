@@ -80,6 +80,14 @@ export namespace Result {
     return flatten(map(f, ru));
   }
 
+  export function map2<U1, U2, V>(fn: (u1: U1, u2: U2) => V, ru1: Result<U1>, ru2: Result<U2>): Result<V> {
+    return flatten(map(u2 => map((u1) => fn(u1, u2), ru1), ru2));
+  }
+
+  export function map3<U1, U2, U3, V>(fn: (u1: U1, u2: U2, u3: U3) => V, ru1: Result<U1>, ru2: Result<U2>, ru3: Result<U3>): Result<V> {
+    return flatten(flatten(map(u3 => map(u2 => map((u1) => fn(u1, u2, u3), ru1), ru2), ru3)));
+  }
+
   export function either<U>(a: Result<U>, b: Result<U>): Result<U> {
     switch (a.status) {
       case "error":

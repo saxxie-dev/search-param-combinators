@@ -1,3 +1,4 @@
+import { PartialResult } from "./PartialResult";
 import { ErrorResult, Result, SuccessResult, WarningResult } from "./Result";
 import { Params, SearchParamMapping } from "./SearchParamMapping";
 
@@ -8,12 +9,8 @@ import { Params, SearchParamMapping } from "./SearchParamMapping";
  */
 export function PrimitiveParam(key: string): SearchParamMapping<string> {
   return {
-    parse: (params: Params) => {
-      const val = params.get(key);
-      if (val) { return [params, SuccessResult(val)]; }
-      return [params, ErrorResult(`Required search parameter [${key}] was not found.`)];
-    },
-    serialize: (value: string, params: Params) => {
+    parse: (params: Params) => params.get(key),
+    serialize: (value: string, params: URLSearchParams) => {
       params.append(key, value);
       return params;
     }
@@ -78,8 +75,8 @@ export function NumberParam(key: string): SearchParamMapping<number> {
  * EnumParam(key, ...values) attempts to store an enum value of the search parameter, [key].
  * Will succeed iff the value at [key] is one of the string values named in the constructor.
  */
-export function EnumParam<ES extends readonly string[]>(key: string, ...values: ES): SearchParamMapping<ES[number]> {
-  return SearchParamMapping.bindResult(
+export function EnumParam<ES extends readonly string[]>(...values: ES): (key: string) => SearchParamMapping<ES[number]> {
+  return (key: string) => SearchParamMapping.bindResult(
     value => {
       if (values.indexOf(value) > -1) { return SuccessResult(value) }
       return ErrorResult(`An enum search parameter [${key}=${value}] could not be interpreted. Expected a value in the range ...${values.join(", ")}...`);
@@ -105,7 +102,7 @@ export function BooleanParam(key: string): SearchParamMapping<boolean> {
   return SearchParamMapping.map(
     value => value === "true" ? true : false,
     x => x ? "true" : "false",
-    EnumParam(key, "true", "false")
+    EnumParam("true", "false")(key)
   )
 }
 
@@ -124,7 +121,7 @@ export function OptionalParam<T>(mapping: SearchParamMapping<T>): SearchParamMap
       }
       return [remainder, result];
     },
-    serialize: (value: T | undefined, params: Params) => {
+    serialize: (value: T | undefined, params: URLSearchParams) => {
       if (value === undefined) { // Default values don't need to be serialized
         return params;
       }
@@ -146,7 +143,7 @@ export function DefaultParam<T>(mapping: SearchParamMapping<T>, defaultValue: T)
       }
       return [remainder, result];
     },
-    serialize: (value: T, params: Params) => {
+    serialize: (value: T, params: URLSearchParams) => {
       if (value === defaultValue) { // Default values don't need to be serialized
         return params;
       }
@@ -155,23 +152,84 @@ export function DefaultParam<T>(mapping: SearchParamMapping<T>, defaultValue: T)
   }
 }
 
-// Set
-// Object 
+export function ArrayParam<T>(mapping: SearchParamMapping<T>): SearchParamMapping<T[]> {
+  const ret: SearchParamMapping<T[]> = {
+    parse: (params: Params) => {
+      const [remainder, head] = mapping.parse(params)
+      if (head.status === "error") {
+        return [params, SuccessResult([])]
+      }
+      const [remainder2, tail] = ret.parse(remainder);
+      return [remainder2, Result.map2((x, y) => [x, ...y], head, tail)];
+    },
+    serialize: (value: T[], params: URLSearchParams) => {
+      const [head, ...tail] = value;
+      if (head === undefined) {
+        return params;
+      }
+      return ret.serialize(tail, mapping.serialize(head, params))
+    }
+  }
+
+  return ret;
+}
+
 export type SearchParamObjectMapping<T extends {}> = {
   [k in keyof T]-?: SearchParamMapping<T[k]>
 }
-// export function ObjectParam<T extends {}>(fields: SearchParamObjectMapping<T>): SearchParamMapping<T> {
-//   return {
-//     parse: (params: Params) => {
-//       let [params, value]
-//       Object.keys(fields).forEach(key => {
 
-//       })
-//     }
-//     serialize: 
-//   }
-// }
+/**
+ * ObjectParam takes an object of parameters, and returns a mapping for objects of data
+ * Will collect and aggregate all errors from the constituent parts.
+ * Serialization order depends on the order of the keys in the mapping, not on the
+ * order of keys in data being serialized. 
+ */
+export function ObjectParam<T extends {}>(fields: SearchParamObjectMapping<T>): SearchParamMapping<T> {
+  const fieldNames = Object.keys(fields) as (keyof T)[];
+  return {
+    parse: (initialParams: Params) => {
+      let params = initialParams;
+      let val: Result<Partial<T>> = SuccessResult({});
+      fieldNames.forEach(key => {
+        [params, val] = PartialResult.bind(
+          (pt: Partial<T>) => {
+            return PartialResult.map((tk: any): Partial<T> => {
+              pt[key] = tk;
+              return pt;
+            }, fields[key].parse(params))
+          }, [params, val]);
+      })
+      return [params, val as Result<T>];
+    },
+    serialize: (value: T, params: URLSearchParams) => {
+      fieldNames.forEach(key => {
+        params = fields[key].serialize(value[key], params);
+      });
+      return params;
+    }
+  }
+}
 
-// TODO: DiscriminatedUnion
-// export type SearchParamDiscriminatedUnionMapping<[]
-// export function DiscriminatedUnion
+
+
+export type SearchParamDiscriminatedUnionMapping<T extends {}> = {
+  [k in keyof T]: { type: k } & T[k];
+}[keyof T]
+export function DiscriminatedUnionParam<T extends {}>(
+  discriminant: SearchParamMapping<keyof T>,
+  mappings: SearchParamObjectMapping<T>): SearchParamMapping<SearchParamDiscriminatedUnionMapping<T>> {
+  return {
+    parse: (params: Params) => {
+      const [remainder, rd] = discriminant.parse(params);
+      return PartialResult.bind(d => {
+        return PartialResult.map(value => ({ ...value, type: d }), mappings[d].parse(remainder))
+      }, [remainder, rd])
+    },
+    serialize: (value, params) => {
+      discriminant.serialize(value.type, params);
+      mappings[value.type].serialize(value, params);
+      return params;
+    }
+  }
+
+}
