@@ -33,4 +33,8 @@ export class SearchParamContext {
     return [nextContext, SuccessResult(nextValue)];
   }
 
+  public remainingKeys(): string[] {
+    return Object.keys(this.valueMap).filter(key => this.progress[key]! < this.valueMap[key]!.length)
+  }
+
 }

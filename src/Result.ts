@@ -145,4 +145,16 @@ export namespace Result {
     if (ru.status === "error") { return defaultValue; }
     return ru.data;
   }
+
+  export function addWarnings<U>(ru: Result<U>, ...warnings: string[]) {
+    const [w0, ...rest] = warnings;
+    if (w0 === undefined) { return; }
+    switch (ru.status) {
+      case "success":
+        return WarningResult(ru.data, w0, ...rest);
+      default: {
+        return { ...ru, warnings: [...ru.warnings, ...warnings] };
+      }
+    }
+  }
 }
